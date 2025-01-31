@@ -12,9 +12,15 @@ int main() {
     char random_message[100] = "random";
     hallocy_move_memory(random_message + 4, random_message, 7);
 
+    char *large_memory = hallocy_malloc(HALLOCY_LARGE_ALLOCATION + 10);
+    hallocy_set_memory(large_memory, 'H', HALLOCY_LARGE_ALLOCATION + 10);
+
     printf("output copy: %s\n", hello_copy);
     printf("output set: %s\n", hello);
     printf("output move: %s\n", random_message);
+    printf("output medium allocation: %s\n", large_memory);
+    
+    hallocy_free(large_memory);
     printf("finished program!\n");
     return 0;
 }
