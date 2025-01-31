@@ -14,6 +14,14 @@ typedef struct hallocy_memory_header {
     struct hallocy_memory_header *next;
 } hallocy_memory_header;
 
+static size_t medium_memory_allocated_freed = 0;
+static size_t medium_memory_allocated_size = 0;
+static hallocy_memory_header *medium_memory_bin = NULL;
+
+static _Thread_local size_t small_memory_allocated_freed = 0;
+static _Thread_local size_t small_memory_allocated_size = 0;
+static _Thread_local hallocy_memory_header *small_memory_bin = NULL;
+
 static size_t page_size = 0;
 
 void *hallocy_malloc(size_t size) {
@@ -37,6 +45,66 @@ void *hallocy_malloc(size_t size) {
         #elif defined(__linux__)
         new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         #endif
+    } else if (total_size > HALLOCY_SMALL_ALLOCATION) {
+        hallocy_memory_header *previous_header = NULL;
+        new_header = medium_memory_bin;
+        while (new_header != NULL) {
+            if (new_header->size >= total_size) {
+                if (previous_header != NULL) {
+                    previous_header->next = new_header->next;
+                } else {
+                    medium_memory_bin = medium_memory_bin->next;
+                }
+
+                new_header->next = NULL;
+                return new_header + 1;
+            }
+
+            previous_header = new_header;
+            new_header = new_header->next;
+        }
+        
+        #if defined(_WIN32)
+        if (hallocy_heap == NULL) {
+            hallocy_heap = GetProcessHeap();
+        }
+
+        new_header = HeapAlloc(hallocy_heap, 0, total_size);
+        #elif defined (__linux__)
+        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        #endif
+
+        medium_memory_allocated_size += (new_header) ? total_size : 0;
+    } else {
+        hallocy_memory_header *previous_header = NULL;
+        new_header = small_memory_bin;
+        while (new_header != NULL) {
+            if (new_header->size >= total_size) {
+                if (previous_header != NULL) {
+                    previous_header->next = new_header->next;
+                } else {
+                    small_memory_bin = small_memory_bin->next;
+                }
+
+                new_header->next = NULL;
+                return new_header + 1;
+            }
+
+            previous_header = new_header;
+            new_header = new_header->next;
+        }
+        
+        #if defined(_WIN32)
+        if (hallocy_heap == NULL) {
+            hallocy_heap = GetProcessHeap();
+        }
+
+        new_header = HeapAlloc(hallocy_heap, 0, total_size);
+        #elif defined (__linux__)
+        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        #endif
+
+        small_memory_allocated_size += (new_header) ? total_size : 0;
     }
 
     if (new_header == NULL) {
@@ -57,6 +125,52 @@ void hallocy_free(void *pointer) {
         #elif defined(__linux__)
         munmap(header, header->size);
         #endif
+    } else if (header->size > HALLOCY_SMALL_ALLOCATION) {
+        header->next = medium_memory_bin;
+        medium_memory_bin = header;
+
+        medium_memory_allocated_freed += header->size;
+        if (medium_memory_allocated_size > HALLOCY_LARGE_ALLOCATION && medium_memory_allocated_size == medium_memory_allocated_freed) {
+            hallocy_memory_header *previous_header = NULL;
+            hallocy_memory_header *current_header = medium_memory_bin;
+            while (current_header != NULL) {
+                previous_header = current_header;
+                current_header = current_header->next;
+
+                #if defined(_WIN32)
+                HeapFree(hallocy_heap, 0, previous_header);
+                #elif defined(__linux__)
+                munmap(previous_header, previous_header->size);
+                #endif
+            }
+
+            medium_memory_bin = NULL;
+            medium_memory_allocated_freed = 0;
+            medium_memory_allocated_size = 0;
+        }
+    } else {
+        header->next = small_memory_bin;
+        small_memory_bin = header;
+
+        small_memory_allocated_freed += header->size;
+        if (small_memory_allocated_size > HALLOCY_LARGE_ALLOCATION && small_memory_allocated_size == small_memory_allocated_freed) {
+            hallocy_memory_header *previous_header = NULL;
+            hallocy_memory_header *current_header = small_memory_bin;
+            while (current_header != NULL) {
+                previous_header = current_header;
+                current_header = current_header->next;
+
+                #if defined(_WIN32)
+                HeapFree(hallocy_heap, 0, previous_header);
+                #elif defined(__linux__)
+                munmap(previous_header, previous_header->size);
+                #endif
+            }
+
+            small_memory_bin = NULL;
+            small_memory_allocated_freed = 0;
+            small_memory_allocated_size = 0;
+        }
     }
 }
 

@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define HALLOCY_LARGE_ALLOCATION 1048576
+#define HALLOCY_SMALL_ALLOCATION 1024
 
 void *hallocy_malloc(size_t size);
 void hallocy_free(void *pointer);
