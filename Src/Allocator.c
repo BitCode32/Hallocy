@@ -14,10 +14,24 @@ typedef struct hallocy_memory_header {
     struct hallocy_memory_header *next;
 } hallocy_memory_header;
 
+static size_t page_size = 0;
+
 void *hallocy_malloc(size_t size) {
+    if (page_size == 0) {
+        #if defined(_WIN32)
+        SYSTEM_INFO system_info;
+        GetSystemInfo(&system_info);
+
+        page_size = system_info.dwPageSize;
+        #elif defined(__linux__)
+        page_size = sysconf(_SC_PAGE_SIZE);
+        #endif
+    }
+
     size_t total_size = size + sizeof(hallocy_memory_header);
     hallocy_memory_header *new_header = NULL;
     if (total_size >= HALLOCY_LARGE_ALLOCATION) {
+        total_size = page_size * (size_t)(((float)total_size / (float)page_size) + 1.0f);
         #if defined(_WIN32)
         new_header = VirtualAlloc(NULL, total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         #elif defined(__linux__)
