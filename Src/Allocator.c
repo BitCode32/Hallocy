@@ -1,5 +1,16 @@
 #include "../Include/Hallocy/Allocator.h"
 
+void *hallocy_set_memory(void *pointer, const int value, const size_t count) {
+    unsigned char *pointer_bytes = (unsigned char*)pointer;
+    const unsigned char value_bytes = (const unsigned char)value;
+
+    for (size_t i = 0; i < count; i++) {
+        pointer_bytes[i] = value_bytes;
+    }
+
+    return pointer;
+}
+
 void *hallocy_copy_memory(void *destination, const void *source, const size_t size) {
     unsigned char *destination_bytes = (unsigned char*)destination;
     const unsigned char *source_bytes = (const unsigned char*)source;
