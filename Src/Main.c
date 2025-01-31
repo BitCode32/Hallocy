@@ -9,8 +9,12 @@ int main() {
     hallocy_copy_memory(hello_copy, hello, 6 * sizeof(char));
     hallocy_set_memory(hello, '?', 5);
 
+    char random_message[100] = "random";
+    hallocy_move_memory(random_message + 4, random_message, 7);
+
     printf("output copy: %s\n", hello_copy);
     printf("output set: %s\n", hello);
+    printf("output move: %s\n", random_message);
     printf("finished program!\n");
     return 0;
 }

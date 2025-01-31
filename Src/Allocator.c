@@ -21,3 +21,20 @@ void *hallocy_copy_memory(void *destination, const void *source, const size_t si
 
     return destination;
 }
+
+void *hallocy_move_memory(void *destination, const void *source, const size_t size) {
+    unsigned char *destination_bytes = (unsigned char*)destination;
+    const unsigned char *source_bytes = (const unsigned char*)source;
+
+    if (destination_bytes > source_bytes) {
+        for (size_t i = size - 1; i > 0; i--) {
+            destination_bytes[i] = source_bytes[i];
+        }
+    } else {
+        for (size_t i = 0; i < size; i++) {
+            destination_bytes[i] = source_bytes[i];
+        }
+    }
+
+    return destination;
+}
