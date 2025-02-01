@@ -36,10 +36,9 @@ void *hallocy_malloc(size_t size) {
         #endif
     }
 
-    size_t total_size = size + sizeof(hallocy_memory_header);
+    size_t total_size = page_size * (size_t)(((float)(size + sizeof(hallocy_memory_header)) / (float)page_size) + 1.0f);
     hallocy_memory_header *new_header = NULL;
     if (total_size >= HALLOCY_LARGE_ALLOCATION) {
-        total_size = page_size * (size_t)(((float)total_size / (float)page_size) + 1.0f);
         #if defined(_WIN32)
         new_header = VirtualAlloc(NULL, total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         #elif defined(__linux__)
