@@ -22,6 +22,7 @@
  * -----------------------------------------------------------------------------
  */
 #include "../Include/Hallocy/Allocator.h"
+#include "../Include/Hallocy/Simd.h"
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -30,6 +31,13 @@ static HANDLE hallocy_heap = NULL;
 #elif defined(__linux__)
 #include <unistd.h>
 #include <sys/mman.h>
+#endif
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
+#include <immintrin.h>
+#include <arm_neon.h>
 #endif
 
 typedef struct hallocy_memory_header {
@@ -291,41 +299,204 @@ void hallocy_free(void *pointer) {
     }
 }
 
-void *hallocy_set_memory(void *pointer, const int value, const size_t count) {
+void *hallocy_set_memory(void *pointer, int value, size_t count) {
     unsigned char *pointer_bytes = (unsigned char*)pointer;
-    const unsigned char value_bytes = (const unsigned char)value;
+    unsigned char value_bytes = (unsigned char)value;
 
-    for (size_t i = 0; i < count; i++) {
-        pointer_bytes[i] = value_bytes;
+    switch (hallocy_supports_simd()) {
+        case HALLOCY_SIMD_AVX512: {
+            __m512i simd_value = _mm512_set1_epi8(value_bytes);
+            while (count >= 64) {
+                _mm512_storeu_si512((__m512i*)pointer_bytes, simd_value);
+                pointer_bytes += 64;
+                count -= 64;
+            }
+        }
+
+        case HALLOCY_SIMD_AVX2:
+        case HALLOCY_SIMD_AVX: {
+            __m256i simd_value = _mm256_set1_epi8(value_bytes);
+            while (count >= 32) {
+                _mm256_storeu_si256((__m256i*)pointer_bytes, simd_value);
+                pointer_bytes += 32;
+                count -= 32;
+            }
+        }
+
+        case HALLOCY_SIMD_SSE2:
+        case HALLOCY_SIMD_SSE: {
+            __m128i simd_value = _mm_set1_epi8(value_bytes);
+            while (count >= 16) {
+                _mm_storeu_si128((__m128i*)pointer_bytes, simd_value);
+                pointer_bytes += 16;
+                count -= 16;
+            }
+            break;
+        }
+
+        default: {
+            size_t *pointer_word = (size_t*)pointer_bytes;
+
+            size_t word_size = sizeof(size_t);
+            size_t value_word = 0;
+            for (size_t i = 0; i < word_size; i++) {
+                value_word |= (size_t)value_bytes << (i * 8);
+            }
+
+            while (count >= word_size) {
+                *pointer_word++ = value_word;
+                count -= word_size;
+            }
+
+            pointer_bytes = (unsigned char*)pointer_word;
+            break;
+        }
+    }
+
+    while (count-- > 0) {
+        *pointer_bytes++ = value_bytes;
     }
 
     return pointer;
 }
 
-void *hallocy_copy_memory(void *destination, const void *source, const size_t size) {
+void *hallocy_copy_memory(void *destination, const void *source, size_t size) {
     unsigned char *destination_bytes = (unsigned char*)destination;
-    const unsigned char *source_bytes = (const unsigned char*)source;
+    unsigned char *source_bytes = (unsigned char*)source;
 
-    for (size_t i = 0; i < size; i++) {
-        destination_bytes[i] = source_bytes[i];
+    switch (hallocy_supports_simd()) {
+        case HALLOCY_SIMD_AVX512: {
+            __m512i simd_value;
+            while (size >= 64) {
+                simd_value = _mm512_loadu_si512((__m512i*)source_bytes);
+                _mm512_storeu_si512((__m512i*)destination_bytes, simd_value);
+
+                destination_bytes += 64;
+                source_bytes += 64;
+                size -= 64;
+            }
+        }
+
+        case HALLOCY_SIMD_AVX2:
+        case HALLOCY_SIMD_AVX: {
+            __m256i simd_value;
+            while (size >= 32) {
+                simd_value = _mm256_loadu_si256((__m256i*)source_bytes);
+                _mm256_storeu_si256((__m256i*)destination_bytes, simd_value);
+
+                destination_bytes += 32;
+                source_bytes += 32;
+                size -= 32;
+            }
+        }
+
+        case HALLOCY_SIMD_SSE2:
+        case HALLOCY_SIMD_SSE: {
+            __m128i simd_value;
+            while (size >= 16) {
+                simd_value = _mm_loadu_si128((__m128i*)source_bytes);
+                _mm_storeu_si128((__m128i*)destination_bytes, simd_value);
+
+                destination_bytes += 16;
+                source_bytes += 16;
+                size -= 16;
+            }
+            break;
+        }
+
+        default: {
+            size_t *destination_word = (size_t*)destination_bytes;
+            size_t *source_word = (size_t*)source_bytes;
+
+            size_t word_size = sizeof(size_t);
+            while (size >= word_size) {
+                *destination_word++ = *source_word++;
+                size -= word_size;
+            }
+
+            destination_bytes = (unsigned char*)destination_word;
+            source_bytes = (unsigned char*)source_word;
+            break;
+        }
+    }
+
+    while (size-- > 0) {
+        *destination_bytes++ = *source_bytes++;
     }
 
     return destination;
 }
 
-void *hallocy_move_memory(void *destination, const void *source, const size_t size) {
+void *hallocy_move_memory(void *destination, const void *source, size_t size) {
     unsigned char *destination_bytes = (unsigned char*)destination;
     const unsigned char *source_bytes = (const unsigned char*)source;
 
     if (destination_bytes > source_bytes) {
-        for (size_t i = size - 1; i > 0; i--) {
-            destination_bytes[i] = source_bytes[i];
-        }
-    } else {
-        for (size_t i = 0; i < size; i++) {
-            destination_bytes[i] = source_bytes[i];
-        }
-    }
+        destination_bytes += size;
+        source_bytes += size;
 
-    return destination;
+        switch (hallocy_supports_simd()) {
+            case HALLOCY_SIMD_AVX512: {
+                __m512i simd_value;
+                while (size >= 64) {
+                    simd_value = _mm512_loadu_si512((__m512i*)source_bytes);
+                    _mm512_storeu_si512((__m512i*)destination_bytes, simd_value);
+
+                    destination_bytes -= 64;
+                    source_bytes -= 64;
+                    size -= 64;
+                }
+            }
+
+            case HALLOCY_SIMD_AVX2:
+            case HALLOCY_SIMD_AVX: {
+                __m256i simd_value;
+                while (size >= 32) {
+                    simd_value = _mm256_loadu_si256((__m256i*)source_bytes);
+                    _mm256_storeu_si256((__m256i*)destination_bytes, simd_value);
+
+                    destination_bytes -= 32;
+                    source_bytes -= 32;
+                    size -= 32;
+                }
+            }
+
+            case HALLOCY_SIMD_SSE2:
+            case HALLOCY_SIMD_SSE: {
+                __m128i simd_value;
+                while (size >= 16) {
+                    simd_value = _mm_loadu_si128((__m128i*)source_bytes);
+                    _mm_storeu_si128((__m128i*)destination_bytes, simd_value);
+
+                    destination_bytes -= 16;
+                    source_bytes -= 16;
+                    size -= 16;
+                }
+                break;
+            }
+
+            default: {
+                size_t *destination_word = (size_t*)destination_bytes;
+                size_t *source_word = (size_t*)source_bytes;
+
+                size_t word_size = sizeof(size_t);
+                while (size >= word_size) {
+                    *destination_word-- = *source_word--;
+                    size -= word_size;
+                }
+
+                destination_bytes = (unsigned char*)destination_word;
+                source_bytes = (unsigned char*)source_word;
+                break;
+            }
+        }
+
+        while (size-- > 0) {
+            *destination_bytes-- = *source_bytes--;
+        }
+
+        return destination;
+    } else {
+        return hallocy_copy_memory(destination, source, size);
+    }
 }
