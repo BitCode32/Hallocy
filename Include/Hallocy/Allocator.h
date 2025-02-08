@@ -30,6 +30,7 @@
 
 void *hallocy_malloc(size_t size);
 void *hallocy_calloc(size_t count, size_t size);
+void *hallocy_realloc(void *pointer, size_t size);
 void hallocy_free(void *pointer);
 
 void *hallocy_set_memory(void *pointer, int value, size_t count);

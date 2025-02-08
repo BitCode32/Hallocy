@@ -242,6 +242,28 @@ void *hallocy_calloc(size_t count, size_t size) {
     return new_header + 1;
 }
 
+void *hallocy_realloc(void *pointer, size_t size) {
+    if (pointer == NULL) {
+        return hallocy_malloc(size);
+    }
+
+    if (size == 0) {
+        hallocy_free(pointer);
+        return NULL;
+    }
+
+    hallocy_memory_header *header = (hallocy_memory_header*)(pointer) - 1;
+    if (size <= header->size && size >= header->size - HALLOCY_SMALL_ALLOCATION) {
+        return pointer;
+    }
+
+    void *reallocated_memory = hallocy_malloc(size);
+    hallocy_copy_memory(reallocated_memory, pointer, (size < header->size) ? size : header->size);
+    hallocy_free(pointer);
+
+    return reallocated_memory;
+}
+
 void hallocy_free(void *pointer) {
     hallocy_memory_header *header = (hallocy_memory_header*)(pointer) - 1;
     if (header->size >= HALLOCY_LARGE_ALLOCATION) {
