@@ -33,13 +33,6 @@ static HANDLE hallocy_heap = NULL;
 #include <sys/mman.h>
 #endif
 
-#if defined(_MSC_VER)
-#include <intrin.h>
-#else
-#include <immintrin.h>
-#include <arm_neon.h>
-#endif
-
 typedef struct hallocy_memory_header {
     size_t size;
     struct hallocy_memory_header *next;
