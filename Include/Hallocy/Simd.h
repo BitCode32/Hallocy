@@ -24,10 +24,19 @@
 #define HALLOCY_SIMD
 
 #if defined(_MSC_VER)
-#include <intrin.h>
+    #if defined(_M_ARM64)
+    #include <arm64intr.h>
+    #else
+    #include <intrin.h>
+    #endif
 #else
-#include <immintrin.h>
-#include <arm_neon.h>
+    #if defined(__aarch64__)
+    #include <arm64intr.h>
+    #elif defined(__arm__)
+    #include <arm_neon.h>
+    #else
+    #include <immintrin.h>
+    #endif
 #endif
 
 typedef enum {
@@ -37,7 +46,8 @@ typedef enum {
     HALLOCY_SIMD_SSE2,
     HALLOCY_SIMD_AVX,
     HALLOCY_SIMD_AVX2,
-    HALLOCY_SIMD_AVX512
+    HALLOCY_SIMD_AVX512,
+    HALLOCY_SIMD_NEON
 } hallocy_simd_type;
 
 hallocy_simd_type hallocy_supports_simd();

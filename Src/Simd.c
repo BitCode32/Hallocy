@@ -21,6 +21,10 @@
  */
 #include "../Include/Hallocy/Simd.h"
 
+#if !defined(_MSC_VER)
+#include <sys/utsname.h>
+#endif
+
 static hallocy_simd_type supported_simd = HALLOCY_SIMD_UNDEFINED;
 
 hallocy_simd_type hallocy_supports_simd() {
@@ -28,73 +32,104 @@ hallocy_simd_type hallocy_supports_simd() {
         return supported_simd;
     }
 
-    #ifdef _MSC_VER
-    int cpu_info[4] = { 0 };
-    __cpuid(cpu_info, 7);
-    if ((cpu_info[1] & (1 << 16)) != 0) {
-        supported_simd = HALLOCY_SIMD_AVX512;
-        return supported_simd;
-    }
-    
-    if ((cpu_info[1] & (1 << 5)) != 0) {
-        supported_simd = HALLOCY_SIMD_AVX2;
-        return supported_simd;
-    }
+    #if defined(_MSC_VER)
+        #if defined(_M_ARM64)
+        if (isProcessorFeaturePresent(PF_ARM64_SVE)) {
+            supported_simd = HALLOCY_SIMD_NEON;
+            return supported_simd
+        }
+        #else
+        int cpu_info[4] = { 0 };
+        __cpuid(cpu_info, 7);
+        if ((cpu_info[1] & (1 << 16)) != 0) {
+            supported_simd = HALLOCY_SIMD_AVX512;
+            return supported_simd;
+        }
+        
+        if ((cpu_info[1] & (1 << 5)) != 0) {
+            supported_simd = HALLOCY_SIMD_AVX2;
+            return supported_simd;
+        }
 
-    __cpuid(cpu_info, 1);
-    
-    if ((cpu_info[2] & (1 << 28)) != 0) {
-        supported_simd = HALLOCY_SIMD_AVX;
-        return supported_simd;
-    }
+        __cpuid(cpu_info, 1);
+        
+        if ((cpu_info[2] & (1 << 28)) != 0) {
+            supported_simd = HALLOCY_SIMD_AVX;
+            return supported_simd;
+        }
 
-    if ((cpu_info[3] & (1 << 26)) != 0) {
-        supported_simd = HALLOCY_SIMD_SSE2;
-        return supported_simd;
-    }
+        if ((cpu_info[3] & (1 << 26)) != 0) {
+            supported_simd = HALLOCY_SIMD_SSE2;
+            return supported_simd;
+        }
 
-    if ((cpu_info[3] & (1 << 25)) != 0) {
-        supported_simd = HALLOCY_SIMD_SSE2;
-        return supported_simd;
-    }
+        if ((cpu_info[3] & (1 << 25)) != 0) {
+            supported_simd = HALLOCY_SIMD_SSE2;
+            return supported_simd;
+        }
+        #endif
     #else
-    unsigned int a, b, c, d;
-    __asm__ __volatile__ (
-        "cpuid"
-        : "=a" (a), "=b" (b), "=c" (c), "=d" (d)
-        : "a"(7)
-    )
+        #if defined(__aarch64__) || defined(__arm__)
+        int file_descriptor = open("/proc/cpuinfo", O_READONLY);
 
-    if ((b & (1 << 16)) != 0) {
-        supported_simd = HALLOCY_SIMD_AVX512;
-        return supported_simd;
-    }
+        if (file_descriptor == -1) {
+            return supported_simd;
+        }
 
-    if ((b & (1 << 5)) != 0) {
-        supported_simd = HALLOCY_SIMD_AVX2;
-        return supported_simd;
-    }
+        char buffer[256];
+        int bytes_read = 0;
 
-    __asm__ __volatile__ (
-        "cpuid"
-        : "=a" (a), "=b" (b), "=c" (c), "=d" (d)
-        : "a"(1)
-    )
+        while ((bytes_read = read(file_descriptor, buffer, sizeof(buffer))) > 0) {
+            for (size_t i = 0; i < bytes_read - 4; i++) {
+                if (buffer[i] == 'n' && buffer[i + 1] == 'e' && buffer[i + 2] == 'o' && buffer[i + 3] == 'n') {
+                    close(file_descriptor);
 
-    if ((c & (1 << 28)) != 0) {
-        supported_simd = HALLOCY_SIMD_AVX;
-        return supported_simd;
-    }
+                    supported_simd = HALLOCY_SIMD_NEON;
+                    return supported_simd;
+                }
+            }
+        }
 
-    if ((c & (1 << 26)) != 0) {
-        supported_simd = HALLOCY_SIMD_SSE2;
-        return supported_simd;
-    }
+        close(file_descriptor);
+        #else
+        unsigned int a, b, c, d;
+        __asm__ __volatile__ (
+            "cpuid"
+            : "=a" (a), "=b" (b), "=c" (c), "=d" (d)
+            : "a"(7)
+        )
 
-    if ((c & (1 << 25)) != 0) {
-        supported_simd = HALLOCY_SIMD_SSE2;
-        return supported_simd;
-    }
+        if ((b & (1 << 16)) != 0) {
+            supported_simd = HALLOCY_SIMD_AVX512;
+            return supported_simd;
+        }
+
+        if ((b & (1 << 5)) != 0) {
+            supported_simd = HALLOCY_SIMD_AVX2;
+            return supported_simd;
+        }
+
+        __asm__ __volatile__ (
+            "cpuid"
+            : "=a" (a), "=b" (b), "=c" (c), "=d" (d)
+            : "a"(1)
+        )
+
+        if ((c & (1 << 28)) != 0) {
+            supported_simd = HALLOCY_SIMD_AVX;
+            return supported_simd;
+        }
+
+        if ((c & (1 << 26)) != 0) {
+            supported_simd = HALLOCY_SIMD_SSE2;
+            return supported_simd;
+        }
+
+        if ((c & (1 << 25)) != 0) {
+            supported_simd = HALLOCY_SIMD_SSE2;
+            return supported_simd;
+        }
+        #endif
     #endif
 
     supported_simd = HALLOCY_SIMD_NONE;

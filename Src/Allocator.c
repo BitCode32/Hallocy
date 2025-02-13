@@ -319,6 +319,19 @@ void *hallocy_set_memory(void *pointer, int value, size_t count) {
     unsigned char value_bytes = (unsigned char)value;
 
     switch (hallocy_supports_simd()) {
+        #if defined(_M_ARM64) || defined(__aarch64__) || defined(__arm__)
+        case HALLOCY_SIMD_NEON: {
+            uint8x16_t simd_value = vdupq_n_u8(value_bytes);
+
+            while (count >= 16) {
+                vst1q_u8(pointer_bytes, simd_value);
+                pointer_bytes += 16;
+                count -= 16;
+            }
+            
+            break;
+        }
+        #else
         case HALLOCY_SIMD_AVX512: {
             __m512i simd_value = _mm512_set1_epi8(value_bytes);
             while (count >= 64) {
@@ -348,6 +361,7 @@ void *hallocy_set_memory(void *pointer, int value, size_t count) {
             }
             break;
         }
+        #endif
 
         default: {
             size_t *pointer_word = (size_t*)pointer_bytes;
