@@ -322,13 +322,11 @@ void *hallocy_set_memory(void *pointer, int value, size_t count) {
         #if defined(_M_ARM64) || defined(__aarch64__) || defined(__arm__)
         case HALLOCY_SIMD_NEON: {
             uint8x16_t simd_value = vdupq_n_u8(value_bytes);
-
             while (count >= 16) {
                 vst1q_u8(pointer_bytes, simd_value);
                 pointer_bytes += 16;
                 count -= 16;
             }
-            
             break;
         }
         #else
@@ -394,6 +392,19 @@ void *hallocy_copy_memory(void *destination, const void *source, size_t size) {
     unsigned char *source_bytes = (unsigned char*)source;
 
     switch (hallocy_supports_simd()) {
+        #if defined(_M_ARM64) || defined(__aarch64__) || defined(__arm__)
+        case HALLOCY_SIMD_NEON: {
+            uint8x16_t simd_value;
+            while (count >= 16) {
+                simd_value = vdupq_n_u8(source_bytes)
+                vst1q_u8(destination_bytes, simd_value);
+                destination_bytes += 16;
+                source_bytes += 16;
+                size -= 16;
+            }
+            break;
+        }
+        #else
         case HALLOCY_SIMD_AVX512: {
             __m512i simd_value;
             while (size >= 64) {
@@ -432,6 +443,7 @@ void *hallocy_copy_memory(void *destination, const void *source, size_t size) {
             }
             break;
         }
+        #endif
 
         default: {
             size_t *destination_word = (size_t*)destination_bytes;
@@ -465,6 +477,19 @@ void *hallocy_move_memory(void *destination, const void *source, size_t size) {
         source_bytes += size;
 
         switch (hallocy_supports_simd()) {
+            #if defined(_M_ARM64) || defined(__aarch64__) || defined(__arm__)
+            case HALLOCY_SIMD_NEON: {
+                uint8x16_t simd_value;
+                while (count >= 16) {
+                    simd_value = vdupq_n_u8(source_bytes)
+                    vst1q_u8(destination_bytes, simd_value);
+                    destination_bytes -= 16;
+                    source_bytes -= 16;
+                    size -= 16;
+                }
+                break;
+            }
+            #else
             case HALLOCY_SIMD_AVX512: {
                 __m512i simd_value;
                 while (size >= 64) {
@@ -503,6 +528,7 @@ void *hallocy_move_memory(void *destination, const void *source, size_t size) {
                 }
                 break;
             }
+            #endif
 
             default: {
                 size_t *destination_word = (size_t*)destination_bytes;
