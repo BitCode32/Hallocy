@@ -97,7 +97,7 @@ hallocy_simd_type hallocy_supports_simd() {
             "cpuid"
             : "=a" (a), "=b" (b), "=c" (c), "=d" (d)
             : "a"(7)
-        )
+        );
 
         if ((b & (1 << 16)) != 0) {
             supported_simd = HALLOCY_SIMD_AVX512;
@@ -113,7 +113,7 @@ hallocy_simd_type hallocy_supports_simd() {
             "cpuid"
             : "=a" (a), "=b" (b), "=c" (c), "=d" (d)
             : "a"(1)
-        )
+        );
 
         if ((c & (1 << 28)) != 0) {
             supported_simd = HALLOCY_SIMD_AVX;

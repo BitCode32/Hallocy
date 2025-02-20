@@ -23,7 +23,7 @@
 #ifndef HALLOCY_ALLOCATOR
 #define HALLOCY_ALLOCATOR
 
-#include <stdint.h>
+#include <stddef.h>
 
 #define HALLOCY_LARGE_ALLOCATION 1048576
 #define HALLOCY_SMALL_ALLOCATION 1024

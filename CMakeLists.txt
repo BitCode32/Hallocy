@@ -15,5 +15,11 @@ target_link_libraries(HallocyApp Hallocy)
 if (MSVC)
     target_compile_options(Hallocy PRIVATE /W4)
 else()
+    target_compile_options(Hallocy PRIVATE -mavx512f -mavx512vl)
+    target_compile_options(HallocyApp PRIVATE -mavx512f -mavx512vl)
+    
+    target_compile_options(Hallocy PRIVATE -march=native)
+    target_compile_options(HallocyApp PRIVATE -march=native)
+
     target_compile_options(Hallocy PRIVATE -Wall -Wextra -pedantic)
 endif()

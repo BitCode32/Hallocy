@@ -60,13 +60,16 @@ void *hallocy_malloc(size_t size) {
         #endif
     }
 
-    size_t total_size = page_size * (size_t)(((float)(size + sizeof(hallocy_memory_header)) / (float)page_size) + 1.0f);
+    size_t total_size = page_size * (size_t)((size + sizeof(hallocy_memory_header) + page_size - 1) / page_size);
     hallocy_memory_header *new_header = NULL;
     if (total_size >= HALLOCY_LARGE_ALLOCATION) {
         #if defined(_WIN32)
         new_header = VirtualAlloc(NULL, total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         #elif defined(__linux__)
         new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (new_header == MAP_FAILED) {
+            return NULL;
+        }
         #endif
     } else if (total_size > HALLOCY_SMALL_ALLOCATION) {
         hallocy_memory_header *previous_header = NULL;
@@ -95,6 +98,9 @@ void *hallocy_malloc(size_t size) {
         new_header = HeapAlloc(hallocy_heap, 0, total_size);
         #elif defined (__linux__)
         new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (new_header == MAP_FAILED) {
+            return NULL;
+        }
         #endif
 
         medium_memory_allocated_size += (new_header) ? total_size : 0;
@@ -125,6 +131,9 @@ void *hallocy_malloc(size_t size) {
         new_header = HeapAlloc(hallocy_heap, 0, total_size);
         #elif defined (__linux__)
         new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (new_header == MAP_FAILED) {
+            return NULL;
+        }
         #endif
 
         small_memory_allocated_size += (new_header) ? total_size : 0;
@@ -159,7 +168,10 @@ void *hallocy_calloc(size_t count, size_t size) {
         new_header = VirtualAlloc(NULL, total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         hallocy_set_memory(new_header + 1, 0, total_size - sizeof(hallocy_memory_header));
         #elif defined(__linux__)
-        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_ZERO, -1, 0);
+        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (new_header == MAP_FAILED) {
+            return NULL;
+        }
         #endif
     } else if (total_size > HALLOCY_SMALL_ALLOCATION) {
         hallocy_memory_header *previous_header = NULL;
@@ -188,7 +200,10 @@ void *hallocy_calloc(size_t count, size_t size) {
 
         new_header = HeapAlloc(hallocy_heap, HEAP_ZERO_MEMORY, total_size);
         #elif defined (__linux__)
-        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_ZERO, -1, 0);
+        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (new_header == MAP_FAILED) {
+            return NULL;
+        }
         #endif
 
         medium_memory_allocated_size += (new_header) ? total_size : 0;
@@ -219,7 +234,10 @@ void *hallocy_calloc(size_t count, size_t size) {
 
         new_header = HeapAlloc(hallocy_heap, HEAP_ZERO_MEMORY, total_size);
         #elif defined (__linux__)
-        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_ZERO, -1, 0);
+        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (new_header == MAP_FAILED) {
+            return NULL;
+        }
         #endif
 
         small_memory_allocated_size += (new_header) ? total_size : 0;
@@ -339,8 +357,7 @@ void *hallocy_set_memory(void *pointer, int value, size_t count) {
             }
         }
 
-        case HALLOCY_SIMD_AVX2:
-        case HALLOCY_SIMD_AVX: {
+        case HALLOCY_SIMD_AVX2: {
             __m256i simd_value = _mm256_set1_epi8(value_bytes);
             while (count >= 32) {
                 _mm256_storeu_si256((__m256i*)pointer_bytes, simd_value);
@@ -349,6 +366,7 @@ void *hallocy_set_memory(void *pointer, int value, size_t count) {
             }
         }
 
+        case HALLOCY_SIMD_AVX:
         case HALLOCY_SIMD_SSE2:
         case HALLOCY_SIMD_SSE: {
             __m128i simd_value = _mm_set1_epi8(value_bytes);
