@@ -31,6 +31,12 @@ static HANDLE hallocy_heap = NULL;
 #elif defined(__linux__)
 #include <unistd.h>
 #include <sys/mman.h>
+#include <syscall.h>
+
+#define FUTEX_WAKE 0
+#define FUTEX_WAIT 1
+
+static int futex_address = 0;
 #endif
 
 typedef struct hallocy_memory_header {
@@ -72,6 +78,18 @@ void *hallocy_malloc(size_t size) {
         }
         #endif
     } else if (total_size > HALLOCY_SMALL_ALLOCATION) {
+        #if defined(_WIN32)
+        #elif defined(__linux__)
+        bool locked = false;
+        while (!locked) {
+            if (__sync_bool_compare_and_swap(&futex_address, 0, 1)) {
+                locked = true;
+            } else {
+                syscall(SYS_futex, &futex_address, FUTEX_WAIT, 1, NULL, NULL, 0);
+            }
+        }
+        #endif
+
         hallocy_memory_header *previous_header = NULL;
         new_header = medium_memory_bin;
         while (new_header != NULL) {
@@ -96,14 +114,18 @@ void *hallocy_malloc(size_t size) {
         }
 
         new_header = HeapAlloc(hallocy_heap, 0, total_size);
+        medium_memory_allocated_size += (new_header) ? total_size : 0;
         #elif defined (__linux__)
         new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (new_header == MAP_FAILED) {
             return NULL;
         }
-        #endif
 
         medium_memory_allocated_size += (new_header) ? total_size : 0;
+
+        futex_address = 0;
+        syscall(SYS_futex, &futex_address, FUTEX_WAKE, 1, NULL, NULL, 0);
+        #endif
     } else {
         hallocy_memory_header *previous_header = NULL;
         new_header = small_memory_bin;
@@ -174,6 +196,18 @@ void *hallocy_calloc(size_t count, size_t size) {
         }
         #endif
     } else if (total_size > HALLOCY_SMALL_ALLOCATION) {
+        #if defined(_WIN32)
+        #elif defined(__linux__)
+        bool locked = false;
+        while (!locked) {
+            if (__sync_bool_compare_and_swap(&futex_address, 0, 1)) {
+                locked = true;
+            } else {
+                syscall(SYS_futex, &futex_address, FUTEX_WAIT, 1, NULL, NULL, 0);
+            }
+        }
+        #endif
+
         hallocy_memory_header *previous_header = NULL;
         new_header = medium_memory_bin;
         while (new_header != NULL) {
@@ -199,14 +233,18 @@ void *hallocy_calloc(size_t count, size_t size) {
         }
 
         new_header = HeapAlloc(hallocy_heap, HEAP_ZERO_MEMORY, total_size);
+        medium_memory_allocated_size += (new_header) ? total_size : 0;
         #elif defined (__linux__)
         new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (new_header == MAP_FAILED) {
             return NULL;
         }
-        #endif
 
         medium_memory_allocated_size += (new_header) ? total_size : 0;
+
+        futex_address = 0;
+        syscall(SYS_futex, &futex_address, FUTEX_WAKE, 1, NULL, NULL, 0);
+        #endif
     } else {
         hallocy_memory_header *previous_header = NULL;
         new_header = small_memory_bin;
