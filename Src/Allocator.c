@@ -414,7 +414,7 @@ void *hallocy_copy_memory(void *destination, const void *source, size_t size) {
         case HALLOCY_SIMD_NEON: {
             uint8x16_t simd_value;
             while (count >= 16) {
-                simd_value = vdupq_n_u8(source_bytes)
+                simd_value = vdupq_n_u8(source_bytes);
                 vst1q_u8(destination_bytes, simd_value);
                 destination_bytes += 16;
                 source_bytes += 16;
@@ -469,7 +469,10 @@ void *hallocy_copy_memory(void *destination, const void *source, size_t size) {
 
             size_t word_size = sizeof(size_t);
             while (size >= word_size) {
-                *destination_word++ = *source_word++;
+                *destination_word = *source_word;
+
+                destination_word++;
+                source_word++;
                 size -= word_size;
             }
 
@@ -499,7 +502,7 @@ void *hallocy_move_memory(void *destination, const void *source, size_t size) {
             case HALLOCY_SIMD_NEON: {
                 uint8x16_t simd_value;
                 while (count >= 16) {
-                    simd_value = vdupq_n_u8(source_bytes)
+                    simd_value = vdupq_n_u8(source_bytes);
                     vst1q_u8(destination_bytes, simd_value);
                     destination_bytes -= 16;
                     source_bytes -= 16;
@@ -554,7 +557,10 @@ void *hallocy_move_memory(void *destination, const void *source, size_t size) {
 
                 size_t word_size = sizeof(size_t);
                 while (size >= word_size) {
-                    *destination_word-- = *source_word--;
+                    *destination_word = *source_word;
+
+                    destination_word--;
+                    source_word--;
                     size -= word_size;
                 }
 
@@ -565,11 +571,122 @@ void *hallocy_move_memory(void *destination, const void *source, size_t size) {
         }
 
         while (size-- > 0) {
-            *destination_bytes-- = *source_bytes--;
+            *destination_bytes = *source_bytes;
+
+            destination_bytes--;
+            source_bytes--;
         }
 
         return destination;
     } else {
         return hallocy_copy_memory(destination, source, size);
     }
+}
+
+bool hallocy_compare_memory(const void *pointer1, const void *pointer2, size_t size) {
+    unsigned char *pointer_bytes1 = (unsigned char*)pointer1;
+    unsigned char *pointer_bytes2 = (unsigned char*)pointer2;
+
+    switch (hallocy_supports_simd()) {
+        #if defined(_M_ARM64) || defined(__aarch64__) || defined(__arm__)
+        case HALLOCY_SIMD_NEON: {
+            while (size >= 16) {
+                uint8x16_t simd_value1 = vdupq_n_u8(pointer_bytes1);
+                uint8x16_t simd_value2 = vdupq_n_u8(pointer_bytes2);
+
+                uint8x16_t result = vceqq_u8(simd_value1, simd_value2);
+                if (vmaxvq_u8(result) != 0xFF) {
+                    return false;
+                }
+
+                pointer_bytes1 += 16;
+                pointer_bytes2 += 16;
+                size -= 16;
+            }
+            break;
+        }
+        #else
+        case HALLOCY_SIMD_AVX512: {
+            while (size >= 64) {
+                __m512i simd_value1 = _mm512_loadu_si512((__m512i*)pointer_bytes1);
+                __m512i simd_value2 = _mm512_loadu_si512((__m512i*)pointer_bytes2);
+
+                __m512i result = _mm512_xor_si512(simd_value1, simd_value2);
+                if (_mm512_test_epi64_mask(result, result) != 0) {
+                    return false;
+                }
+
+                pointer_bytes1 += 64;
+                pointer_bytes2 += 64;
+                size -= 64;
+            }
+        }
+
+        case HALLOCY_SIMD_AVX2:
+        case HALLOCY_SIMD_AVX: {
+            while (size >= 32) {
+                __m256i simd_value1 = _mm256_loadu_si256((__m256i*)pointer_bytes1);
+                __m256i simd_value2 = _mm256_loadu_si256((__m256i*)pointer_bytes2);
+
+                __m256i result = _mm256_xor_si256(simd_value1, simd_value2);
+                if (!_mm256_testz_si256(result, result)) {
+                    return false;
+                }
+
+                pointer_bytes1 += 32;
+                pointer_bytes2 += 32;
+                size -= 32;
+            }            
+        }
+
+        case HALLOCY_SIMD_SSE2:
+        case HALLOCY_SIMD_SSE: {
+            while (size >= 16) {
+                __m128i simd_value1 = _mm_loadu_si128((__m128i*)pointer_bytes1);
+                __m128i simd_value2 = _mm_loadu_si128((__m128i*)pointer_bytes2);
+
+                __m128i result = _mm_xor_si128(simd_value1, simd_value2);
+                if (!_mm_testz_si128(result, result)) {
+                    return false;
+                }
+
+                pointer_bytes1 += 16;
+                pointer_bytes2 += 16;                
+                size -= 16;
+            }
+            break;
+        }
+        #endif
+
+        default: {
+            size_t *pointer_word1 = (size_t*)pointer_bytes1;
+            size_t *pointer_word2 = (size_t*)pointer_bytes2;
+
+            size_t word_size = sizeof(size_t);
+            while (size >= word_size) {
+                if (*pointer_word1 != *pointer_word2) {
+                    return false;
+                }
+
+                pointer_word1++;
+                pointer_word2++;
+                size -= word_size;
+            }
+
+            pointer_bytes1 = (unsigned char*)pointer_word1;
+            pointer_bytes2 = (unsigned char*)pointer_word2;
+            break;
+        }
+    }
+
+    while (size-- > 0) {
+        if (*pointer_bytes1 != *pointer_bytes2) {
+            return false;
+        }
+
+        pointer_bytes1++;
+        pointer_bytes2++;
+    }
+
+    return true;
 }

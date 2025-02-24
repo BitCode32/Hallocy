@@ -2,7 +2,7 @@
 An advanced heap allocator for C.
 
 # Introduction
-Hallocy is an advanced C allocator library. This library implements the standard malloc, calloc, realloc, free, memset, memcopy and memmove functions. The aim of this library is to be a better version of the standard C allocator by improving performance. Hallocy supports both Windows and Linux also keeping multithreading in mind.
+Hallocy is an advanced C allocator library. This library implements the standard malloc, calloc, realloc, free, memset, memcopy, memmove and memcmp functions. The aim of this library is to be a better version of the standard C allocator by improving performance. Hallocy supports both Windows and Linux also keeping multithreading in mind.
 
 # Features
 The hallocy library offers the following features:
@@ -11,6 +11,7 @@ The hallocy library offers the following features:
 - Reallocating more memory 
 - Copying and moving memory
 - Setting memory
+- Comparing memory
 
 # Installation
 ## Prerequisites

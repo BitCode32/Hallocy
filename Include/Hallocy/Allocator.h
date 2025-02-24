@@ -24,6 +24,7 @@
 #define HALLOCY_ALLOCATOR
 
 #include <stddef.h>
+#include <stdbool.h>
 
 #define HALLOCY_LARGE_ALLOCATION 1048576
 #define HALLOCY_SMALL_ALLOCATION 1024
@@ -36,5 +37,6 @@ void hallocy_free(void *pointer);
 void *hallocy_set_memory(void *pointer, int value, size_t count);
 void *hallocy_copy_memory(void *destination, const void *source, size_t size);
 void *hallocy_move_memory(void *destination, const void *source, size_t size);
+bool hallocy_compare_memory(const void *pointer1, const void *pointer2, size_t size);
 
 #endif

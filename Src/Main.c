@@ -41,6 +41,8 @@ int main() {
     printf("output set: %s\n", hello);
     printf("output move: %s\n", random_message);
     printf("output medium allocation: %s\n", medium_memory);
+    printf("Test is %s to Test.\n", (hallocy_compare_memory("Test", "Test", 5)) ? "equal" : "not equal");
+    printf("Test2 is %s to Test3.\n", (hallocy_compare_memory("Test2", "Test3", 6)) ? "equal" : "not equal");
 
     hallocy_free(medium_memory);
 
