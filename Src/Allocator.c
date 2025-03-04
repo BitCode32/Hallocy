@@ -58,7 +58,7 @@ static _Thread_local hallocy_memory_header *small_memory_bin = NULL;
 static size_t page_size = 0;
 
 #if defined(_WIN32)
-BOOL CALLBACK hallocy_initialize_mutex(PINIT_ONCE init_once, PVOID parameter, PVOID *context) {
+static BOOL CALLBACK hallocy_initialize_mutex(PINIT_ONCE init_once, PVOID parameter, PVOID *context) {
     (void)init_once;
     (void)parameter;
     (void)context;
@@ -67,7 +67,7 @@ BOOL CALLBACK hallocy_initialize_mutex(PINIT_ONCE init_once, PVOID parameter, PV
 }
 #endif
 
-void *hallocy_malloc(size_t size) {
+static void *hallocy_allocate(size_t size, bool zero_memory) {
     if (page_size == 0) {
         #if defined(_WIN32)
         SYSTEM_INFO system_info;
@@ -84,205 +84,53 @@ void *hallocy_malloc(size_t size) {
     if (total_size >= HALLOCY_LARGE_ALLOCATION) {
         #if defined(_WIN32)
         new_header = VirtualAlloc(NULL, total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        #elif defined(__linux__)
-        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (new_header == MAP_FAILED) {
-            return NULL;
-        }
-        #endif
-    } else if (total_size > HALLOCY_SMALL_ALLOCATION) {
-        #if defined(_WIN32)
-        InitOnceExecuteOnce(&hallocy_init_once, hallocy_initialize_mutex, NULL, NULL);
-        EnterCriticalSection(&hallocy_critical_section);
-        #elif defined(__linux__)
-        bool locked = false;
-        while (!locked) {
-            if (__sync_bool_compare_and_swap(&futex_address, 0, 1)) {
-                locked = true;
-            } else {
-                syscall(SYS_futex, &futex_address, FUTEX_WAIT, 1, NULL, NULL, 0);
-            }
-        }
-        #endif
-
-        hallocy_memory_header *previous_header = NULL;
-        new_header = medium_memory_bin;
-        while (new_header != NULL) {
-            if (new_header->size >= total_size) {
-                if (previous_header != NULL) {
-                    previous_header->next = new_header->next;
-                } else {
-                    medium_memory_bin = medium_memory_bin->next;
-                }
-
-                new_header->next = NULL;
-                return new_header + 1;
-            }
-
-            previous_header = new_header;
-            new_header = new_header->next;
-        }
-        
-        #if defined(_WIN32)
-        if (hallocy_heap == NULL) {
-            hallocy_heap = GetProcessHeap();
-        }
-
-        new_header = HeapAlloc(hallocy_heap, 0, total_size);
-        medium_memory_allocated_size += (new_header) ? total_size : 0;
-
-        LeaveCriticalSection(&hallocy_critical_section);
-        #elif defined (__linux__)
-        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (new_header == MAP_FAILED) {
+        if (new_header == NULL) {
             return NULL;
         }
 
-        medium_memory_allocated_size += (new_header) ? total_size : 0;
-
-        futex_address = 0;
-        syscall(SYS_futex, &futex_address, FUTEX_WAKE, 1, NULL, NULL, 0);
-        #endif
-    } else {
-        hallocy_memory_header *previous_header = NULL;
-        new_header = small_memory_bin;
-        while (new_header != NULL) {
-            if (new_header->size >= total_size) {
-                if (previous_header != NULL) {
-                    previous_header->next = new_header->next;
-                } else {
-                    small_memory_bin = small_memory_bin->next;
-                }
-
-                new_header->next = NULL;
-                return new_header + 1;
-            }
-
-            previous_header = new_header;
-            new_header = new_header->next;
-        }
-        
-        #if defined(_WIN32)
-        if (hallocy_heap == NULL) {
-            hallocy_heap = GetProcessHeap();
-        }
-
-        new_header = HeapAlloc(hallocy_heap, 0, total_size);
-        #elif defined (__linux__)
-        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (new_header == MAP_FAILED) {
-            return NULL;
-        }
-        #endif
-
-        small_memory_allocated_size += (new_header) ? total_size : 0;
-    }
-
-    if (new_header == NULL) {
-        return NULL;
-    }
-
-    new_header->size = total_size;
-    new_header->next = NULL;
-
-    return new_header + 1;
-}
-
-void *hallocy_calloc(size_t count, size_t size) {
-    if (page_size == 0) {
-        #if defined(_WIN32)
-        SYSTEM_INFO system_info;
-        GetSystemInfo(&system_info);
-
-        page_size = system_info.dwPageSize;
-        #elif defined(__linux__)
-        page_size = sysconf(_SC_PAGE_SIZE);
-        #endif
-    }
-
-    size_t total_size = page_size * (size_t)(((float)((size * count) + sizeof(hallocy_memory_header)) / (float)page_size) + 1.0f);
-    hallocy_memory_header *new_header = NULL;
-    if (total_size >= HALLOCY_LARGE_ALLOCATION) {
-        #if defined(_WIN32)
-        new_header = VirtualAlloc(NULL, total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        hallocy_set_memory(new_header + 1, 0, total_size - sizeof(hallocy_memory_header));
-        #elif defined(__linux__)
-        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (new_header == MAP_FAILED) {
-            return NULL;
-        }
-        #endif
-    } else if (total_size > HALLOCY_SMALL_ALLOCATION) {
-        #if defined(_WIN32)
-        InitOnceExecuteOnce(&hallocy_init_once, hallocy_initialize_mutex, NULL, NULL);
-        EnterCriticalSection(&hallocy_critical_section);
-        #elif defined(__linux__)
-        bool locked = false;
-        while (!locked) {
-            if (__sync_bool_compare_and_swap(&futex_address, 0, 1)) {
-                locked = true;
-            } else {
-                syscall(SYS_futex, &futex_address, FUTEX_WAIT, 1, NULL, NULL, 0);
-            }
-        }
-        #endif
-
-        hallocy_memory_header *previous_header = NULL;
-        new_header = medium_memory_bin;
-        while (new_header != NULL) {
-            if (new_header->size >= total_size) {
-                if (previous_header != NULL) {
-                    previous_header->next = new_header->next;
-                } else {
-                    medium_memory_bin = medium_memory_bin->next;
-                }
-
-                new_header->next = NULL;
-                hallocy_set_memory(new_header + 1, 0, total_size - sizeof(hallocy_memory_header));
-                return new_header + 1;
-            }
-
-            previous_header = new_header;
-            new_header = new_header->next;
-        }
-        
-        #if defined(_WIN32)
-        if (hallocy_heap == NULL) {
-            hallocy_heap = GetProcessHeap();
-        }
-
-        new_header = HeapAlloc(hallocy_heap, HEAP_ZERO_MEMORY, total_size);
-        medium_memory_allocated_size += (new_header) ? total_size : 0;
-
-        LeaveCriticalSection(&hallocy_critical_section);
-        #elif defined (__linux__)
-        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (new_header == MAP_FAILED) {
-            return NULL;
-        }
-
-        medium_memory_allocated_size += (new_header) ? total_size : 0;
-
-        futex_address = 0;
-        syscall(SYS_futex, &futex_address, FUTEX_WAKE, 1, NULL, NULL, 0);
-        #endif
-    } else {
-        hallocy_memory_header *previous_header = NULL;
-        new_header = small_memory_bin;
-        while (new_header != NULL) {
-            if (new_header->size >= total_size) {
-                if (previous_header != NULL) {
-                    previous_header->next = new_header->next;
-                } else {
-                    small_memory_bin = small_memory_bin->next;
-                }
-
-                new_header->next = NULL;
-                return new_header + 1;
-            }
-
-            previous_header = new_header;
+        if (zero_memory) {
             hallocy_set_memory(new_header + 1, 0, total_size - sizeof(hallocy_memory_header));
+        }
+        #elif defined(__linux__)
+        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (new_header == MAP_FAILED) {
+            return NULL;
+        }
+        #endif
+    } else if (total_size > HALLOCY_SMALL_ALLOCATION) {
+        #if defined(_WIN32)
+        InitOnceExecuteOnce(&hallocy_init_once, hallocy_initialize_mutex, NULL, NULL);
+        EnterCriticalSection(&hallocy_critical_section);
+        #elif defined(__linux__)
+        bool locked = false;
+        while (!locked) {
+            if (__sync_bool_compare_and_swap(&futex_address, 0, 1)) {
+                locked = true;
+            } else {
+                syscall(SYS_futex, &futex_address, FUTEX_WAIT, 1, NULL, NULL, 0);
+            }
+        }
+        #endif
+
+        hallocy_memory_header *previous_header = NULL;
+        new_header = medium_memory_bin;
+        while (new_header != NULL) {
+            if (new_header->size >= total_size) {
+                if (previous_header != NULL) {
+                    previous_header->next = new_header->next;
+                } else {
+                    medium_memory_bin = medium_memory_bin->next;
+                }
+
+                new_header->next = NULL;
+                if (zero_memory) {
+                    hallocy_set_memory(new_header + 1, 0, total_size - sizeof(hallocy_memory_header));
+                }
+
+                return new_header + 1;
+            }
+
+            previous_header = new_header;
             new_header = new_header->next;
         }
         
@@ -291,7 +139,59 @@ void *hallocy_calloc(size_t count, size_t size) {
             hallocy_heap = GetProcessHeap();
         }
 
-        new_header = HeapAlloc(hallocy_heap, HEAP_ZERO_MEMORY, total_size);
+        if (zero_memory) {
+            new_header = HeapAlloc(hallocy_heap, HEAP_ZERO_MEMORY, total_size);
+        } else {
+            new_header = HeapAlloc(hallocy_heap, 0, total_size);
+        }
+
+        medium_memory_allocated_size += (new_header) ? total_size : 0;
+
+        LeaveCriticalSection(&hallocy_critical_section);
+        #elif defined (__linux__)
+        new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (new_header == MAP_FAILED) {
+            return NULL;
+        }
+
+        medium_memory_allocated_size += (new_header) ? total_size : 0;
+
+        futex_address = 0;
+        syscall(SYS_futex, &futex_address, FUTEX_WAKE, 1, NULL, NULL, 0);
+        #endif
+    } else {
+        hallocy_memory_header *previous_header = NULL;
+        new_header = small_memory_bin;
+        while (new_header != NULL) {
+            if (new_header->size >= total_size) {
+                if (previous_header != NULL) {
+                    previous_header->next = new_header->next;
+                } else {
+                    small_memory_bin = small_memory_bin->next;
+                }
+
+                new_header->next = NULL;
+                if (zero_memory) {
+                    hallocy_set_memory(new_header + 1, 0, total_size - sizeof(hallocy_memory_header));
+                }
+
+                return new_header + 1;
+            }
+
+            previous_header = new_header;
+            new_header = new_header->next;
+        }
+
+        #if defined(_WIN32)
+        if (hallocy_heap == NULL) {
+            hallocy_heap = GetProcessHeap();
+        }
+
+        if (zero_memory) {
+            new_header = HeapAlloc(hallocy_heap, HEAP_ZERO_MEMORY, total_size);
+        } else {
+            new_header = HeapAlloc(hallocy_heap, 0, total_size);
+        }
         #elif defined (__linux__)
         new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (new_header == MAP_FAILED) {
@@ -311,6 +211,9 @@ void *hallocy_calloc(size_t count, size_t size) {
 
     return new_header + 1;
 }
+
+inline void *hallocy_malloc(size_t size) { return hallocy_allocate(size, false); }
+inline void *hallocy_calloc(size_t count, size_t size) { return hallocy_allocate(count * size, true); }
 
 void *hallocy_realloc(void *pointer, size_t size) {
     if (pointer == NULL) {

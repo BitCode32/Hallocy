@@ -29,8 +29,8 @@
 #define HALLOCY_LARGE_ALLOCATION 1048576
 #define HALLOCY_SMALL_ALLOCATION 1024
 
-void *hallocy_malloc(size_t size);
-void *hallocy_calloc(size_t count, size_t size);
+inline void *hallocy_malloc(size_t size);
+inline void *hallocy_calloc(size_t count, size_t size);
 void *hallocy_realloc(void *pointer, size_t size);
 void hallocy_free(void *pointer);
 
