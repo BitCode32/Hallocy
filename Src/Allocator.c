@@ -28,6 +28,9 @@
 #include <windows.h>
 
 static HANDLE hallocy_heap = NULL;
+
+static INIT_ONCE hallocy_init_once = INIT_ONCE_STATIC_INIT;
+static CRITICAL_SECTION hallocy_critical_section;
 #elif defined(__linux__)
 #include <unistd.h>
 #include <sys/mman.h>
@@ -54,6 +57,16 @@ static _Thread_local hallocy_memory_header *small_memory_bin = NULL;
 
 static size_t page_size = 0;
 
+#if defined(_WIN32)
+BOOL CALLBACK hallocy_initialize_mutex(PINIT_ONCE init_once, PVOID parameter, PVOID *context) {
+    (void)init_once;
+    (void)parameter;
+    (void)context;
+
+    return InitializeCriticalSectionEx(&hallocy_critical_section, 0x00000400, 0);
+}
+#endif
+
 void *hallocy_malloc(size_t size) {
     if (page_size == 0) {
         #if defined(_WIN32)
@@ -79,6 +92,8 @@ void *hallocy_malloc(size_t size) {
         #endif
     } else if (total_size > HALLOCY_SMALL_ALLOCATION) {
         #if defined(_WIN32)
+        InitOnceExecuteOnce(&hallocy_init_once, hallocy_initialize_mutex, NULL, NULL);
+        EnterCriticalSection(&hallocy_critical_section);
         #elif defined(__linux__)
         bool locked = false;
         while (!locked) {
@@ -115,6 +130,8 @@ void *hallocy_malloc(size_t size) {
 
         new_header = HeapAlloc(hallocy_heap, 0, total_size);
         medium_memory_allocated_size += (new_header) ? total_size : 0;
+
+        LeaveCriticalSection(&hallocy_critical_section);
         #elif defined (__linux__)
         new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (new_header == MAP_FAILED) {
@@ -197,6 +214,8 @@ void *hallocy_calloc(size_t count, size_t size) {
         #endif
     } else if (total_size > HALLOCY_SMALL_ALLOCATION) {
         #if defined(_WIN32)
+        InitOnceExecuteOnce(&hallocy_init_once, hallocy_initialize_mutex, NULL, NULL);
+        EnterCriticalSection(&hallocy_critical_section);
         #elif defined(__linux__)
         bool locked = false;
         while (!locked) {
@@ -234,6 +253,8 @@ void *hallocy_calloc(size_t count, size_t size) {
 
         new_header = HeapAlloc(hallocy_heap, HEAP_ZERO_MEMORY, total_size);
         medium_memory_allocated_size += (new_header) ? total_size : 0;
+
+        LeaveCriticalSection(&hallocy_critical_section);
         #elif defined (__linux__)
         new_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (new_header == MAP_FAILED) {
