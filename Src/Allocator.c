@@ -127,6 +127,13 @@ static void *hallocy_allocate(size_t size, bool zero_memory) {
                     hallocy_set_memory(new_header + 1, 0, total_size - sizeof(hallocy_memory_header));
                 }
 
+                #if defined(_WIN32)
+                LeaveCriticalSection(&hallocy_critical_section);
+                #elif defined(__linux__)
+                futex_address = 0;
+                syscall(SYS_futex, &futex_address, FUTEX_WAKE, 1, NULL, NULL, 0);
+                #endif
+
                 return new_header + 1;
             }
 
@@ -162,6 +169,7 @@ static void *hallocy_allocate(size_t size, bool zero_memory) {
     } else {
         hallocy_memory_header *previous_header = NULL;
         new_header = small_memory_bin;
+
         while (new_header != NULL) {
             if (new_header->size >= total_size) {
                 if (previous_header != NULL) {
@@ -212,8 +220,8 @@ static void *hallocy_allocate(size_t size, bool zero_memory) {
     return new_header + 1;
 }
 
-inline void *hallocy_malloc(size_t size) { return hallocy_allocate(size, false); }
-inline void *hallocy_calloc(size_t count, size_t size) { return hallocy_allocate(count * size, true); }
+void *hallocy_malloc(size_t size) { return hallocy_allocate(size, false); }
+void *hallocy_calloc(size_t count, size_t size) { return hallocy_allocate(count * size, true); }
 
 void *hallocy_realloc(void *pointer, size_t size) {
     if (pointer == NULL) {
