@@ -13,7 +13,7 @@ add_executable(HallocyApp ${PROJECT_SOURCE_DIR}/Src/Main.c)
 target_link_libraries(HallocyApp Hallocy)
 
 if (MSVC)
-    target_compile_options(Hallocy PRIVATE /W4)
+    target_compile_options(Hallocy PRIVATE /W4 /Zl)
 else()
     target_compile_options(Hallocy PRIVATE -mavx512f -mavx512vl)
     target_compile_options(HallocyApp PRIVATE -mavx512f -mavx512vl)
